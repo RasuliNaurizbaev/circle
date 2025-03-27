@@ -1,18 +1,13 @@
 <template>
   <v-container style="max-width: 600px;">
+    <NavbarComponent />
     <v-timeline density="compact" side="end">
       <v-timeline-item class="mb-12" :dot-color="getUserColor(username)" size="70" fill-dot>
         <template v-slot:icon>
           <span>{{ username }}</span>
         </template>
-        <v-text-field
-          style="width: 500px;"
-          v-model="input"
-          density="compact"
-          label="Leave a comment..."
-          hide-details
-          @keydown.enter="comment"
-        >
+        <v-text-field style="width: 500px;" v-model="input" density="compact" label="Leave a comment..." hide-details
+          @keydown.enter="comment">
           <template v-slot:append>
             <v-btn class="mx-0" variant="text" @click="comment">
               Post
@@ -22,17 +17,9 @@
       </v-timeline-item>
 
       <v-slide-x-transition group>
-        <v-timeline-item
-          v-for="event in timeline"
-          :key="event.id"
-          :dot-color="getUserColor(event.username)"
-          size="small"
-        >
-          <div
-            class="post-container"
-            @mouseover="hoveredPost = event.id"
-            @mouseleave="clearHover(event.id)"
-          >
+        <v-timeline-item v-for="event in timeline" :key="event.id" :dot-color="getUserColor(event.username)"
+          size="small">
+          <div class="post-container" @mouseover="hoveredPost = event.id" @mouseleave="clearHover(event.id)">
             <div class="post-content">
               <div class="d-flex justify-space-between align-items-center">
                 <div class="post-text">
@@ -41,73 +28,36 @@
                 <div class="time-text">{{ event.time }}</div>
               </div>
               <div class="d-flex justify-end mt-2 button-container">
-                <v-btn
-                  variant="text"
-                  size="small"
-                  @click="startEdit(event.id)"
-                  class="me-2"
-                  v-if="hoveredPost === event.id && editingPost !== event.id && replyingTo !== event.id"
-                >
+                <v-btn variant="text" size="small" @click="startEdit(event.id)" class="me-2"
+                  v-if="hoveredPost === event.id && editingPost !== event.id && replyingTo !== event.id">
                   Edit
                 </v-btn>
-                <v-btn
-                  variant="text"
-                  size="small"
-                  @click="startReply(event.id)"
-                  v-if="hoveredPost === event.id && editingPost !== event.id && replyingTo !== event.id"
-                >
+                <v-btn variant="text" size="small" @click="startReply(event.id)"
+                  v-if="hoveredPost === event.id && editingPost !== event.id && replyingTo !== event.id">
                   Reply
                 </v-btn>
               </div>
             </div>
             <div v-if="editingPost === event.id" class="mt-2">
-              <v-text-field
-                v-model="event.text"
-                style="width: 100%;"
-                density="comfortable"
-                label="Edit your post..."
-                hide-details
-              />
+              <v-text-field v-model="event.text" style="width: 100%;" density="comfortable" label="Edit your post..."
+                hide-details />
               <div class="d-flex justify-end mt-2">
-                <v-btn
-                  variant="text"
-                  size="small"
-                  @click="saveEdit(event)"
-                  class="me-2"
-                >
+                <v-btn variant="text" size="small" @click="saveEdit(event)" class="me-2">
                   Save
                 </v-btn>
-                <v-btn
-                  variant="text"
-                  size="small"
-                  @click="cancelEdit"
-                >
+                <v-btn variant="text" size="small" @click="cancelEdit">
                   Cancel
                 </v-btn>
               </div>
             </div>
             <div v-if="replyingTo === event.id" class="mt-2">
-              <v-text-field
-                v-model="replyInput"
-                style="width: 100%;"
-                density="comfortable"
-                label="Write a reply..."
-                hide-details
-              />
+              <v-text-field v-model="replyInput" style="width: 100%;" density="comfortable" label="Write a reply..."
+                hide-details />
               <div class="d-flex justify-end mt-2">
-                <v-btn
-                  variant="text"
-                  size="small"
-                  @click="saveReply(event.id)"
-                  class="me-2"
-                >
+                <v-btn variant="text" size="small" @click="saveReply(event.id)" class="me-2">
                   Save
                 </v-btn>
-                <v-btn
-                  variant="text"
-                  size="small"
-                  @click="cancelReply"
-                >
+                <v-btn variant="text" size="small" @click="cancelReply">
                   Cancel
                 </v-btn>
               </div>
@@ -121,6 +71,8 @@
 
 <script setup>
 import { computed, ref, onMounted } from 'vue';
+import NavbarComponent from "@/components/NavbarComponent.vue"
+
 const socket = new WebSocket("ws://172.16.2.17:8080");
 
 socket.onmessage = (event) => {
@@ -190,10 +142,35 @@ function comment() {
 }
 
 function startEdit(id) {
+  const post = events.value.find((event) => event.id === id);
+
+  // Проверка: только автор сообщения может его редактировать
+  if (post.username !== username) {
+    alert("You can only edit your own posts.");
+    return;
+  }
   editingPost.value = id;
 }
 
 function saveEdit(event) {
+  if (event.username !== username) {
+    alert("You can only edit your own posts.");
+    return;
+  }
+
+  // Обновить текст всех ответов, которые ссылаются на это сообщение
+  events.value.forEach((e) => {
+    if (e.replyTo === event.id) {
+      const truncatedText = event.text.length > 30
+        ? event.text.slice(0, 30) + "..."
+        : event.text;
+
+      // Обновить текст ответа
+      const replyContent = e.text.split(": ")[1]; // Извлечь текст ответа
+      e.text = `Reply to "${truncatedText}": ${replyContent}`;
+    }
+  });
+
   editingPost.value = null;
   saveToLocalStorage();
 }
@@ -210,23 +187,24 @@ function startReply(id) {
 function saveReply(id) {
   if (!replyInput.value || replyInput.value.trim() === "") return;
 
+  // Найти оригинальное сообщение
   const originalPost = events.value.find((event) => event.id === id);
+
+  // Извлечь текст оригинального сообщения
   const truncatedText = originalPost.text.length > 30
     ? originalPost.text.slice(0, 30) + "..."
     : originalPost.text;
 
   const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+  // Добавить новый ответ
   events.value.push({
     id: nonce.value++,
     username: username,
     text: `Reply to "${truncatedText}": ${replyInput.value}`,
+    replyTo: id, // Ссылка на id оригинального сообщения
     time: time,
   });
-
-  if (events.value.length > 20) {
-    events.value.shift();
-  }
 
   saveToLocalStorage();
   replyingTo.value = null;
